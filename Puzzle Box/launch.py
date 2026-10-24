@@ -9,12 +9,12 @@ import time
 import pygame
 from gpiozero import DigitalInputDevice
 
-GPIO_PIN = 17
-SCRIPT_PATH = "/home/pi/installation.py"
-BLACK_IMAGE = "/home/pi/black.png"
+GPIO_PIN = 24
+SCRIPT_PATH = "/home/hericus/Desktop/wave_match.py"
+BLACK_IMAGE = "/home/hericus/Desktop/black.png"
 INACTIVITY_TIMEOUT = 15 * 60
 
-# COM -> GND, NO -> GPIO17. Pressed means active.
+# COM -> GND, NO -> GPIO24. Pressed means active.
 trigger = DigitalInputDevice(
     GPIO_PIN,
     pull_up=True,
