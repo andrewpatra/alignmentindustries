@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Run wave_match.py continuously; toggle DSI-1 on microswitch activity."""
+"""Run wave_match.py and keypad.py continuously; toggle DSI-1 on microswitch activity."""
 
 import subprocess
 import sys
@@ -9,7 +9,8 @@ from gpiozero import DigitalInputDevice
 DISPLAY_OUTPUT = "DSI-1"
 GPIO_PIN = 24
 INACTIVITY_TIMEOUT = 15 * 60
-SCRIPT_PATH = "/home/hericus/Desktop/wave_match.py"
+WAVE_MATCH_PATH = "/home/hericus/Desktop/wave_match.py"
+KEYPAD_PATH = "/home/hericus/Desktop/keypad.py"
 
 
 def set_display(enabled):
@@ -30,11 +31,14 @@ def main():
         last_press = None
         display_enabled = True
 
-        # Start the game once; it is not stopped by the inactivity timer.
-        game = subprocess.Popen([sys.executable, SCRIPT_PATH], start_new_session=True)
-        print(f"Started wave_match.py (PID {game.pid})", flush=True)
+        # Start both applications; they are not stopped by the inactivity timer.
+        wave_match_game = subprocess.Popen([sys.executable, WAVE_MATCH_PATH], start_new_session=True)
+        print(f"Started wave_match.py (PID {wave_match_game.pid})", flush=True)
 
-        # Give the application a moment to create its window before blanking.
+        keypad_process = subprocess.Popen([sys.executable, KEYPAD_PATH], start_new_session=True)
+        print(f"Started keypad.py (PID {keypad_process.pid})", flush=True)
+
+        # Give the applications a moment to create their windows before blanking.
         time.sleep(2)
         if set_display(False):
             display_enabled = False
@@ -59,8 +63,12 @@ def main():
                         display_enabled = False
                     last_press = None
 
-                if game.poll() is not None:
-                    print(f"wave_match.py exited (code {game.returncode})", file=sys.stderr, flush=True)
+                if wave_match_game.poll() is not None:
+                    print(f"wave_match.py exited (code {wave_match_game.returncode})", file=sys.stderr, flush=True)
+                    break
+
+                if keypad_process.poll() is not None:
+                    print(f"keypad.py exited (code {keypad_process.returncode})", file=sys.stderr, flush=True)
                     break
 
                 time.sleep(0.05)
@@ -68,7 +76,7 @@ def main():
             # Restore the screen for troubleshooting or normal desktop use.
             if not display_enabled:
                 set_display(True)
-            # Intentionally do not terminate wave_match.py here.
+            # Intentionally do not terminate the subprocesses here.
 
 
 if __name__ == "__main__":
