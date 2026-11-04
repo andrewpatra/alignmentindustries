@@ -9,8 +9,8 @@ from gpiozero import DigitalInputDevice
 DISPLAY_OUTPUT = "DSI-1"
 GPIO_PIN = 24
 INACTIVITY_TIMEOUT = 15 * 60
-WAVE_MATCH_PATH = "/home/hericus/Desktop/alignmentindustries/Puzzle Box/wave_match.py"
-KEYPAD_PATH = "/home/hericus/Desktop/alignmentindustries/Puzzle Box/keypad.py"
+WAVE_MATCH_PATH = "/home/hericus/Desktop/wave_match.py"
+KEYPAD_PATH = "/home/hericus/Desktop/keypad.py"
 
 
 def set_display(enabled):
