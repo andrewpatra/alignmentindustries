@@ -5,15 +5,16 @@ Signal Tuner - Model 100 (Python / pygame edition)
 The intro text shows for 8 seconds (INTRO_SECONDS), then the game begins.
 Turn the two rotary encoders to line your wave up with the amber target wave.
 Each wave is solved only when AMPLITUDE and FREQUENCY are both exactly right
-(values step by 0.1). Hold the match for 1.5 s and a NEXT button appears.
+(values step by 0.1). Hold the exact match for 2 s and the game moves on to the
+next wave by itself (move off target and the timer resets).
 
 Controls
   Rotary encoders : amplitude (GPIO 17/18) and frequency (GPIO 27/21)
   Keyboard        : Up/Down = amplitude, Left/Right = frequency (0.1 steps)
                     1 / 2 / 3 = sine / square / saw
-                    Enter or Space = NEXT / restart
+                    Enter or Space = restart (on the final screen)
                     Esc or Q = quit
-  Touch / mouse   : tap the on-screen NEXT button
+  Touch / mouse   : tap the final screen to restart
 
 Setup (Raspberry Pi OS)
   sudo apt install python3-pygame python3-gpiozero
@@ -42,7 +43,7 @@ FREQ_PINS = (27, 21)
 
 # Optional physical switches (BCM pin numbers, wired to ground). None = unused.
 SHAPE_SWITCH_PINS = {"sine": None, "square": None, "saw": None}
-NEXT_BUTTON_PIN = None
+RESTART_BUTTON_PIN = None  # restarts from the final screen
 
 # Look and feel
 SCROLL_SPEED = 0.03      # screen-widths per second (0 = frozen trace)
@@ -50,7 +51,7 @@ NOISE = 0.4              # px of vertical fuzz on the beam
 WOBBLE = 0.005           # slow analog amplitude / baseline drift
 FADE = 0.50              # phosphor decay per frame (lower = longer afterglow)
 ALIGN_THRESHOLD = 0.35   # px (at 10 px per amp unit); smaller = stricter
-HOLD_SECONDS = 1.5       # how long a match must be held before NEXT appears
+HOLD_SECONDS = 2.0       # how long an exact match stays up before the next wave loads
 INTRO_SECONDS = 8.0      # how long the SIGNAL LOST text stays up before the game begins
 DIV_X, DIV_Y = 10, 8     # graticule divisions
 
@@ -111,8 +112,8 @@ class Hardware:
         try:
             from gpiozero import Button
 
-            if NEXT_BUTTON_PIN is not None:
-                b = Button(NEXT_BUTTON_PIN)
+            if RESTART_BUTTON_PIN is not None:
+                b = Button(RESTART_BUTTON_PIN)
                 b.when_pressed = lambda: self.events.append("next")
                 self.buttons.append(b)
             for shape, pin in SHAPE_SWITCH_PINS.items():
@@ -180,7 +181,6 @@ class Game:
         self.crt = pygame.Rect(0, 0, screen_w, screen_h)
         self.amp_px = self.crt.h / 28.0  # pixels per amp unit (9.9 stays on screen)
         cw, ch = self.crt.size
-        self.next_btn = pygame.Rect(cw // 2 - 70, ch - 58, 140, 36)
 
         # ---- fonts ----
         self.vt = os.path.exists(self._font_path())
@@ -210,7 +210,6 @@ class Game:
         self.level = 0
         self.results = []
         self.matched = False
-        self.solved = False
         self.hold_start = None
 
     # ---------------- fonts ----------------
@@ -302,20 +301,16 @@ class Game:
     def press_primary(self):
         if self.state == STATE_WON:
             self.start()
-        elif self.state == STATE_PLAY and self.solved:
-            self.next_level()
 
     def start(self):
         self.state = STATE_PLAY
         self.level = 0
         self.results = []
-        self.solved = False
         self.hold_start = None
 
     def next_level(self):
         # record the (exactly matched) settings for the final diagnostics
         self.results.append((self.shape, self.amp_steps / 10, self.freq_steps / 10))
-        self.solved = False
         self.matched = False
         self.hold_start = None
         self.level += 1
@@ -346,10 +341,7 @@ class Game:
                 elif ev.key in (pygame.K_RETURN, pygame.K_SPACE):
                     self.press_primary()
             elif ev.type == pygame.MOUSEBUTTONDOWN:
-                p = (ev.pos[0] - self.crt.x, ev.pos[1] - self.crt.y)  # scope coords
-                if self.state == STATE_PLAY and self.solved and self.next_btn.collidepoint(p):
-                    self.next_level()
-                elif self.state == STATE_WON:
+                if self.state == STATE_WON:
                     self.start()
         while self.hw.events:
             e = self.hw.events.popleft()
@@ -377,12 +369,11 @@ class Game:
         if self.matched:
             if self.hold_start is None:
                 self.hold_start = now
-            if not self.solved and now - self.hold_start >= HOLD_SECONDS:
-                self.solved = True  # NEXT appears; vanishes again if you unalign
+            if now - self.hold_start >= HOLD_SECONDS:
+                self.next_level()  # green screen stayed up long enough: move on
         else:
             self.hold_start = None
-            self.solved = False
-
+    
     # ---------------- drawing ----------------
     def build_points(self, shape, amp, freq, t, seed):
         w, mid = self.crt.w, self.crt.h / 2
@@ -483,14 +474,6 @@ class Game:
         self.blit_text(sc, "2 V/DIV   0.5 ms/DIV", self.f_small, CYAN_TEXT, (w - 12, h - 8),
                        "bottomright", alpha=150)
 
-        # NEXT / FINISH button
-        if playing and self.solved:
-            label = "[ FINISH ]" if self.level == len(LEVELS) - 1 else "[ NEXT ]"
-            pulse = 0.5 + 0.5 * math.sin(t * 4.5)
-            pygame.draw.rect(sc, (4, 24, 16), self.next_btn)
-            pygame.draw.rect(sc, lerp_color((30, 120, 80), GREEN, pulse), self.next_btn, 2)
-            self.blit_text(sc, label, self.f_mid, GREEN, self.next_btn.center, "center", glow=GREEN)
-
         # glass: scanlines, vignette, slow rolling hum bar
         sc.blit(self.fx, (0, 0))
         sc.blit(self.hum, (0, (t * (h + 90) / 7.0) % (h + 90) - 90))
@@ -541,3 +524,4 @@ if __name__ == "__main__":
     except KeyboardInterrupt:
         pygame.quit()
         sys.exit(0)
+
