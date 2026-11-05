@@ -2,6 +2,7 @@
 """Run wave_match and keypad; reset both after 15 minutes without a switch press."""
 
 import os
+import re
 import signal
 import subprocess
 import sys
@@ -65,6 +66,18 @@ def stop_apps(processes):
             process.wait()
 
 
+
+def force_kill_wave_match():
+    """Force-kill only processes whose command line names this wave_match.py."""
+    pattern = re.escape(WAVE_MATCH_PATH) + r"(?:\s|$)"
+    result = subprocess.run(["pkill", "-9", "-f", pattern], check=False)
+    # pkill returns 1 if no matching process remains; that is not an error.
+    if result.returncode not in (0, 1):
+        print(f"Warning: targeted pkill failed (code {result.returncode})", file=sys.stderr, flush=True)
+    else:
+        print("Targeted force-kill for wave_match.py completed", flush=True)
+
+
 def main():
     processes = []
     display_enabled = True
@@ -91,6 +104,7 @@ def main():
                     print("15 minutes without a press: resetting both applications", flush=True)
                     if set_display(False):
                         display_enabled = False
+                    force_kill_wave_match()
                     stop_apps(processes)
                     processes = []
                     processes = start_apps()
