@@ -41,9 +41,13 @@ FPS = 30
 AMP_PINS = (17, 18)
 FREQ_PINS = (27, 21)
 
-# Optional physical switches (BCM pin numbers, wired to ground). None = unused.
-SHAPE_SWITCH_PINS = {"sine": None, "square": None, "saw": None}
-RESTART_BUTTON_PIN = None  # restarts from the final screen
+# 3-position rotary selector switch for the wave type (BCM pin numbers).
+# Wire the switch's COMMON pin to GND and each position's pin to the GPIO below.
+# Swap the numbers if a position selects the wrong wave. None = position unused.
+# These avoid the encoder pins (17/18/27/21), the launcher microswitch (24),
+# the MOSFET outputs (13/26) and I2C (2/3) used by the other scripts.
+SHAPE_SWITCH_PINS = {"sine": 5, "square": 6, "saw": 16}
+RESTART_BUTTON_PIN = None  # optional button (to GND) that restarts from the final screen
 
 # Look and feel
 SCROLL_SPEED = 0.03      # screen-widths per second (0 = frozen trace)
@@ -93,7 +97,8 @@ class Hardware:
         self.amp_enc = None
         self.freq_enc = None
         self.buttons = []
-        self.events = deque()  # 'next', 'sine', 'square', 'saw'
+        self.shape_inputs = {}  # shape name -> gpiozero Button, one per switch position
+        self.events = deque()  # 'next'
         try:
             from gpiozero import RotaryEncoder
 
@@ -116,13 +121,21 @@ class Hardware:
                 b = Button(RESTART_BUTTON_PIN)
                 b.when_pressed = lambda: self.events.append("next")
                 self.buttons.append(b)
+            # A rotary selector holds its position, so read its level instead of
+            # waiting for a press event. Internal pull-ups; the active position is
+            # the one connected to the common (GND) pin.
             for shape, pin in SHAPE_SWITCH_PINS.items():
                 if pin is not None:
-                    b = Button(pin)
-                    b.when_pressed = lambda s=shape: self.events.append(s)
-                    self.buttons.append(b)
+                    self.shape_inputs[shape] = Button(pin, pull_up=True, bounce_time=0.02)
         except Exception as e:
             print(f"Switch init error: {e}")
+
+    def read_shape(self):
+        """Wave type the selector switch is set to, or None between positions."""
+        for shape, button in self.shape_inputs.items():
+            if button.is_pressed:
+                return shape
+        return None
 
     def read(self):
         """Return (amp_steps, freq_steps) clamped to 0..99, or None."""
@@ -205,6 +218,7 @@ class Game:
         self.intro_start = self.t0
         self.state = STATE_START
         self.shape = "sine"
+        self.last_switch_shape = None
         self.amp_steps = 50
         self.freq_steps = 50
         self.level = 0
@@ -347,8 +361,6 @@ class Game:
             e = self.hw.events.popleft()
             if e == "next":
                 self.press_primary()
-            elif e in SHAPES:
-                self.shape = e
         return True
 
     # ---------------- logic ----------------
@@ -356,6 +368,13 @@ class Game:
         hw = self.hw.read()
         if hw:
             self.amp_steps, self.freq_steps = hw
+
+        # Selector switch: apply its position at startup and whenever it moves.
+        # (Keys 1/2/3 still work; they just get replaced the next time it moves.)
+        sw = self.hw.read_shape()
+        if sw is not None and sw != self.last_switch_shape:
+            self.shape = sw
+            self.last_switch_shape = sw
 
         if self.state == STATE_START and now - self.intro_start >= INTRO_SECONDS:
             self.start()  # intro text has been up long enough
@@ -524,4 +543,3 @@ if __name__ == "__main__":
     except KeyboardInterrupt:
         pygame.quit()
         sys.exit(0)
-
