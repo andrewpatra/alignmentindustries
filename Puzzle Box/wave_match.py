@@ -46,7 +46,7 @@ FREQ_PINS = (27, 21)
 # Swap the numbers if a position selects the wrong wave. None = position unused.
 # These avoid the encoder pins (17/18/27/21), the launcher microswitch (24),
 # the MOSFET outputs (13/26) and I2C (2/3) used by the other scripts.
-SHAPE_SWITCH_PINS = {"sine": 5, "square": 6, "saw": 16}
+SHAPE_SWITCH_PINS = {"sine": 5, "square": 6}
 RESTART_BUTTON_PIN = None  # optional button (to GND) that restarts from the final screen
 
 # Look and feel
