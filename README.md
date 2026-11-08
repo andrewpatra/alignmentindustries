@@ -8,6 +8,8 @@ https://www.youtube.com/watch?v=QyFcl_Fba-k&authuser=0
 **Background Image Config:** 
 https://www.youtube.com/watch?v=zHZRFwWQt2w
 
+**Navbar:**
+https://www.youtube.com/watch?v=f3uCSh6LIY0
 
 **Image Sourcing:**
 
