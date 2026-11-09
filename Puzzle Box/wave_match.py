@@ -216,8 +216,7 @@ class Game:
         # shrunk only as far as needed to fit the widest diagnostics line
         sample = f"{'SQUARE':<6} - AMPLITUDE: 9.9  FREQUENCY: 9.9"
         self.f_end_title = self.fit_font(int(self.crt.h * 0.115), "COMMUNICATIONS RESTORED", self.crt.w * 0.92)
-        self.f_end_body = self.fit_font(int(self.crt.h * 0.095), sample, self.crt.w * 0.92)
-        self.f_end_hint = self.fit_font(int(self.crt.h * 0.055), "PRESS ENTER OR TAP TO RESTART", self.crt.w * 0.92)
+        self.f_end_body = self.fit_font(int(self.crt.h * 0.095 * 0.9), sample, self.crt.w * 0.92 * 0.9)
 
         # ---- pre-rendered layers ----
         self.crt_bg = self.make_crt_bg()
@@ -552,27 +551,42 @@ class Game:
 
         self.screen.blit(sc, self.crt.topleft)
 
+    def wrap_text(self, text, font, max_w):
+        """Greedy word-wrap into lines no wider than max_w."""
+        out, cur = [], ""
+        for word in text.split():
+            trial = (cur + " " + word).strip()
+            if cur and font.size(trial)[0] > max_w:
+                out.append(cur)
+                cur = word
+            else:
+                cur = trial
+        return out + ([cur] if cur else [])
+
     def draw_final(self, sc, w, h):
-        """Final screen: big text, centered as a block."""
-        ft, fb, fh = self.f_end_title, self.f_end_body, self.f_end_hint
+        """Final screen: title and keypad prompt in the big font, the rest 10% smaller."""
+        ft, fb = self.f_end_title, self.f_end_body
         lh = fb.get_linesize()
         lines = [f"{shape.upper():<6} - AMPLITUDE: {a:.1f}  FREQUENCY: {f:.1f}"
                  for shape, a, f in self.results]
+        prompt = self.wrap_text("PLEASE ENTER VARIABLES ON THE KEYPAD FOLLOWED BY #", ft, w * 0.92)
         gap = lh * 0.6
         total = (ft.get_linesize() + lh * 0.3 + lh + gap
-                 + lh * (1 + len(lines)) + gap + fh.get_linesize())
+                 + lh * (1 + len(lines)) + gap + ft.get_linesize() * len(prompt))
         y = max(6, (h - total) / 2)
-        r = self.blit_text(sc, "COMMUNICATIONS RESTORED", ft, CYAN_TEXT, (w // 2, y), "midtop", glow=CYAN)
-        r = self.blit_text(sc, "ALL THREE SIGNALS SYNCHRONIZED", fb, CYAN_TEXT,
-                           (w // 2, r.bottom + lh * 0.3), "midtop", glow=CYAN)
+        r = self.blit_text(sc, "COMMUNICATIONS RESTORED", ft, GREEN, (w // 2, y), "midtop", glow=GREEN)
+        r = self.blit_text(sc, "ALL THREE SIGNALS SYNCHRONIZED", fb, GREEN,
+                           (w // 2, r.bottom + lh * 0.3), "midtop", glow=GREEN)
         x = (w - max([fb.size(line)[0] for line in lines] + [0])) // 2  # monospace: columns line up
         y = r.bottom + gap
         self.blit_text(sc, "WAVE DIAGNOSTICS:", fb, CYAN_TEXT, (x, y), glow=CYAN)
         for line in lines:
             y += lh
             self.blit_text(sc, line, fb, CYAN_TEXT, (x, y), glow=CYAN)
-        self.blit_text(sc, "PRESS ENTER OR TAP TO RESTART", fh, CYAN_TEXT,
-                       (w // 2, y + lh + gap), "midtop", alpha=150)
+        y += lh + gap
+        for line in prompt:
+            r = self.blit_text(sc, line, ft, GREEN, (w // 2, y), "midtop", glow=GREEN)
+            y = r.top + ft.get_linesize()
 
     def draw(self, t):
         # The scope is the whole display: no bezel, header, knobs or panel.
@@ -596,4 +610,3 @@ if __name__ == "__main__":
     except KeyboardInterrupt:
         pygame.quit()
         sys.exit(0)
-
