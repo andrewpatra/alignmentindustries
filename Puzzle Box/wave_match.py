@@ -4,9 +4,10 @@ Signal Tuner - Model 100 (Python / pygame edition)
 
 The intro text shows for 8 seconds (INTRO_SECONDS), then the game begins.
 Turn the two rotary encoders to line your wave up with the amber target wave.
-Each wave is solved only when AMPLITUDE and FREQUENCY are both exactly right
-(values step by 0.1). Hold the exact match for 2 s and the game moves on to the
-next wave by itself (move off target and the timer resets).
+Each wave is solved when AMPLITUDE and FREQUENCY are both within a small range of
+the target (AMP_TOLERANCE / FREQ_TOLERANCE, in 0.1 steps). Hold it for a beat
+(GREEN_DELAY) and the screen turns green; 2 s later the game moves on to the next
+wave by itself. Moving out of range at any point resets the timers.
 
 Controls
   Rotary encoders : amplitude (GPIO 17/18) and frequency (GPIO 27/21)
@@ -55,12 +56,21 @@ NOISE = 0.4              # px of vertical fuzz on the beam
 WOBBLE = 0.005           # slow analog amplitude / baseline drift
 FADE = 0.50              # phosphor decay per frame (lower = longer afterglow)
 ALIGN_THRESHOLD = 0.35   # px (at 10 px per amp unit); smaller = stricter
-HOLD_SECONDS = 2.0       # how long an exact match stays up before the next wave loads
+GREEN_DELAY = 0.8        # a match must be held this long before the screen turns green
+                         # (so sweeping a knob past the answer can't reveal it)
+HOLD_SECONDS = 2.0       # how long the green screen stays up before the next wave loads
+# How close the knobs must be to the target to count as solved, in 0.1 steps.
+# 0 = exact, 1 = within +/-0.1, 2 = within +/-0.2, ...
+AMP_TOLERANCE = 2
+FREQ_TOLERANCE = 2
+# When solved, show the target numbers and lock your wave exactly onto the target
+# (so the screen and the final diagnostics always show the true values).
+SNAP_ON_MATCH = True
 INTRO_SECONDS = 8.0      # how long the SIGNAL LOST text stays up before the game begins
 DIV_X, DIV_Y = 10, 8     # graticule divisions
 
 # (shape, amplitude in 0.1 steps, frequency in 0.1 steps)  -> 35 = 3.5
-LEVELS = [("sine", 35, 40), ("square", 60, 25), ("saw", 75, 60)]
+LEVELS = [("sine", 34, 42), ("square", 97, 26), ("saw", 77, 60)]
 SHAPES = ("sine", "square", "saw")
 MAX_STEPS = 99  # 9.9
 
@@ -202,6 +212,12 @@ class Game:
         self.f_big = self.font(30)
         self.f_bg = self.font(130)
         self.f_bg_label = self.font(20)
+        # final screen: large body text that scales with the display height and is
+        # shrunk only as far as needed to fit the widest diagnostics line
+        sample = f"{'SQUARE':<6} - AMPLITUDE: 9.9  FREQUENCY: 9.9"
+        self.f_end_title = self.fit_font(int(self.crt.h * 0.115), "COMMUNICATIONS RESTORED", self.crt.w * 0.92)
+        self.f_end_body = self.fit_font(int(self.crt.h * 0.095), sample, self.crt.w * 0.92)
+        self.f_end_hint = self.fit_font(int(self.crt.h * 0.055), "PRESS ENTER OR TAP TO RESTART", self.crt.w * 0.92)
 
         # ---- pre-rendered layers ----
         self.crt_bg = self.make_crt_bg()
@@ -221,10 +237,13 @@ class Game:
         self.last_switch_shape = None
         self.amp_steps = 50
         self.freq_steps = 50
+        self.disp_amp = 50   # what the screen shows (= knobs, or the target when snapped)
+        self.disp_freq = 50
         self.level = 0
         self.results = []
-        self.matched = False
-        self.hold_start = None
+        self.matched = False      # True once the match has been held for GREEN_DELAY
+        self.range_start = None   # when the knobs first entered the solve range
+        self.hold_start = None    # when the screen turned green
 
     # ---------------- fonts ----------------
     @staticmethod
@@ -237,6 +256,14 @@ class Game:
         # VT323 runs small; shrink sizes for the fallback font
         return pygame.font.SysFont("dejavusansmono,liberationmono,couriernew,monospace",
                                    max(8, int(size * 0.72)), bold=True)
+
+    def fit_font(self, size, text, max_w):
+        """Largest font up to `size` that renders `text` within max_w pixels."""
+        f = self.font(size)
+        while size > 10 and f.size(text)[0] > max_w:
+            size -= 1
+            f = self.font(size)
+        return f
 
     def blit_text(self, surf, text, font, color, pos, anchor="topleft", glow=None, alpha=255):
         img = font.render(text, True, color)
@@ -320,12 +347,14 @@ class Game:
         self.state = STATE_PLAY
         self.level = 0
         self.results = []
+        self.range_start = None
         self.hold_start = None
 
     def next_level(self):
         # record the (exactly matched) settings for the final diagnostics
-        self.results.append((self.shape, self.amp_steps / 10, self.freq_steps / 10))
+        self.results.append((self.shape, self.disp_amp / 10, self.disp_freq / 10))
         self.matched = False
+        self.range_start = None
         self.hold_start = None
         self.level += 1
         if self.level >= len(LEVELS):
@@ -378,21 +407,33 @@ class Game:
 
         if self.state == STATE_START and now - self.intro_start >= INTRO_SECONDS:
             self.start()  # intro text has been up long enough
+        self.disp_amp, self.disp_freq = self.amp_steps, self.freq_steps
         if self.state != STATE_PLAY:
             self.matched = False
             return
         tgt_shape, tgt_amp, tgt_freq = LEVELS[self.level]
-        self.matched = (self.shape == tgt_shape
-                        and self.amp_steps == tgt_amp
-                        and self.freq_steps == tgt_freq)
+        in_range = (self.shape == tgt_shape
+                    and abs(self.amp_steps - tgt_amp) <= AMP_TOLERANCE
+                    and abs(self.freq_steps - tgt_freq) <= FREQ_TOLERANCE)
+        if in_range:
+            if self.range_start is None:
+                self.range_start = now
+            # Only after the beat does the screen react: green numbers, snap to target.
+            self.matched = now - self.range_start >= GREEN_DELAY
+        else:
+            self.range_start = None
+            self.matched = False
+
         if self.matched:
+            if SNAP_ON_MATCH:
+                self.disp_amp, self.disp_freq = tgt_amp, tgt_freq
             if self.hold_start is None:
                 self.hold_start = now
             if now - self.hold_start >= HOLD_SECONDS:
                 self.next_level()  # green screen stayed up long enough: move on
         else:
             self.hold_start = None
-    
+
     # ---------------- drawing ----------------
     def build_points(self, shape, amp, freq, t, seed):
         w, mid = self.crt.w, self.crt.h / 2
@@ -415,7 +456,7 @@ class Game:
         """Stretches where your wave and the target coincide."""
         w, mid = self.crt.w, self.crt.h / 2
         thr = ALIGN_THRESHOLD * self.amp_px / 10.0
-        ua, uf = self.amp_steps / 10, self.freq_steps / 10
+        ua, uf = self.disp_amp / 10, self.disp_freq / 10
         runs, run = [], []
         for px in range(0, w + 1):
             vt = wave_val(tgt[0], tgt[1] / 10, tgt[2] / 10, px, w, t, self.amp_px)
@@ -456,7 +497,7 @@ class Game:
         # big background values (green when matched)
         if playing:
             col, alpha = (GREEN, 97) if self.matched else (CYAN, 41)
-            for frac, label, steps in ((0.25, "AMP", self.amp_steps), (0.75, "FREQ", self.freq_steps)):
+            for frac, label, steps in ((0.25, "AMP", self.disp_amp), (0.75, "FREQ", self.disp_freq)):
                 cx = int(w * frac)
                 num = self.bg_number(f"{steps / 10:.1f}", col, alpha)
                 sc.blit(num, num.get_rect(center=(cx, h // 2 + 8)))
@@ -469,7 +510,7 @@ class Game:
         tgt = LEVELS[self.level] if playing else None
         if playing:
             self.draw_beam(self.build_points(tgt[0], tgt[1] / 10, tgt[2] / 10, t, 1.3), AMBER, AMBER_CORE)
-        self.draw_beam(self.build_points(self.shape, self.amp_steps / 10, self.freq_steps / 10, t, 0.0),
+        self.draw_beam(self.build_points(self.shape, self.disp_amp / 10, self.disp_freq / 10, t, 0.0),
                        CYAN, CYAN_CORE)
         if playing:
             for run in self.align_runs(t, tgt):
@@ -483,7 +524,7 @@ class Game:
 
         # on-screen text
         if playing:
-            self.blit_text(sc, f"{self.shape.upper()}   AMP {self.amp_steps / 10:.1f}   FREQ {self.freq_steps / 10:.1f}",
+            self.blit_text(sc, f"{self.shape.upper()}   AMP {self.disp_amp / 10:.1f}   FREQ {self.disp_freq / 10:.1f}",
                            self.f_small, CYAN_TEXT, (12, 8), glow=CYAN)
             if not self.hw.hw_available:
                 self.blit_text(sc, "KEYBOARD MODE", self.f_small, CYAN_TEXT, (w - 12, 8),
@@ -507,19 +548,31 @@ class Game:
                 self.blit_text(sc, "ALIGN THE WAVES TO REESTABLISH COMMUNICATIONS.", self.f_small,
                                CYAN_TEXT, (w // 2, h // 2 + 20), "center", glow=CYAN)
             else:
-                self.blit_text(sc, "COMMUNICATIONS RESTORED", self.f_big, CYAN_TEXT,
-                               (w // 2, 34), "center", glow=CYAN)
-                self.blit_text(sc, "ALL THREE SIGNALS SYNCHRONIZED", self.f_small, CYAN_TEXT,
-                               (w // 2, 66), "center", glow=CYAN)
-                x = w // 2 - 190
-                self.blit_text(sc, "WAVE DIAGNOSTICS:", self.f_mid, CYAN_TEXT, (x, 100), glow=CYAN)
-                for i, (shape, a, f) in enumerate(self.results):
-                    line = f"{shape.upper():<6} - AMPLITUDE: {a:.1f}  FREQUENCY: {f:.1f}"
-                    self.blit_text(sc, line, self.f_mid, CYAN_TEXT, (x, 134 + i * 30), glow=CYAN)
-                self.blit_text(sc, "PRESS ENTER OR TAP TO RESTART", self.f_small, CYAN_TEXT,
-                               (w // 2, h - 22), "center", alpha=150)
+                self.draw_final(sc, w, h)
 
         self.screen.blit(sc, self.crt.topleft)
+
+    def draw_final(self, sc, w, h):
+        """Final screen: big text, centered as a block."""
+        ft, fb, fh = self.f_end_title, self.f_end_body, self.f_end_hint
+        lh = fb.get_linesize()
+        lines = [f"{shape.upper():<6} - AMPLITUDE: {a:.1f}  FREQUENCY: {f:.1f}"
+                 for shape, a, f in self.results]
+        gap = lh * 0.6
+        total = (ft.get_linesize() + lh * 0.3 + lh + gap
+                 + lh * (1 + len(lines)) + gap + fh.get_linesize())
+        y = max(6, (h - total) / 2)
+        r = self.blit_text(sc, "COMMUNICATIONS RESTORED", ft, CYAN_TEXT, (w // 2, y), "midtop", glow=CYAN)
+        r = self.blit_text(sc, "ALL THREE SIGNALS SYNCHRONIZED", fb, CYAN_TEXT,
+                           (w // 2, r.bottom + lh * 0.3), "midtop", glow=CYAN)
+        x = (w - max([fb.size(line)[0] for line in lines] + [0])) // 2  # monospace: columns line up
+        y = r.bottom + gap
+        self.blit_text(sc, "WAVE DIAGNOSTICS:", fb, CYAN_TEXT, (x, y), glow=CYAN)
+        for line in lines:
+            y += lh
+            self.blit_text(sc, line, fb, CYAN_TEXT, (x, y), glow=CYAN)
+        self.blit_text(sc, "PRESS ENTER OR TAP TO RESTART", fh, CYAN_TEXT,
+                       (w // 2, y + lh + gap), "midtop", alpha=150)
 
     def draw(self, t):
         # The scope is the whole display: no bezel, header, knobs or panel.
@@ -543,5 +596,4 @@ if __name__ == "__main__":
     except KeyboardInterrupt:
         pygame.quit()
         sys.exit(0)
-
 
