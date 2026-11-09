@@ -1,3 +1,8 @@
+:root {
+    --dark-blue: #006aff;
+    --light-blue: #00aaff;
+}
+
 body {
     margin: 0px;
     display: flex;
@@ -15,7 +20,7 @@ body {
 } */
 
 .container {
-    background-color: #dadabe;
+    background-color: #dad4bc;
     width: 900px;
 }
 
@@ -29,23 +34,36 @@ body {
     flex-direction: row;
     align-items: center;
     width: 890px;
-    gap: 5px;
+    gap: 6px;
 }
 
 .navbar a{
     color: white;
-    background-color: turquoise;
+    background-color: var(--light-blue);
     text-decoration: none;
-    border-top: 2px solid blue;
-    border-bottom:2px solid blue;
-    padding-top: 2px;
-    padding-bottom: 2px;
-    width: 134px;
-    padding: 5px;
+    border-top: 2px solid var(--dark-blue);
+    border-bottom:2px solid var(--dark-blue);
+    padding-top: 0px;
+    padding-bottom: 0px;
+    width: 143px;
+    /* padding: 5px; */
     display: block;
     text-align: center;
+    font-size: 16pt;
+    font-weight: 600;
 }
 
 .navbar li{
     float: left;
+}
+
+.divider ul{
+    list-style-type: none;
+    padding: 0px;
+    margin: 0px;
+    display: flex;
+    flex-direction: row;
+    background-color: white;
+
+
 }
