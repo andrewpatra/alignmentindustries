@@ -28,8 +28,8 @@ EXPECTED_ID = 0x31
 MOSFET_1_PIN = 13
 MOSFET_2_PIN = 26
 
-CODE_1 = "1234"  # Replace with your first code.
-CODE_2 = "5678"  # Replace with your second code.
+CODE_1 = "344297267760"  # Replace with your first code.
+CODE_2 = "1234"  # Replace with your second code.
 PULSE_SECONDS = 1.0
 POLL_INTERVAL = 0.02
 MAX_CODE_LENGTH = 12
