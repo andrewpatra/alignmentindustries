@@ -1,6 +1,7 @@
 :root {
     --dark-blue: #006aff;
     --light-blue: #00aaff;
+    --beige: #dad4bc;
 }
 
 body {
@@ -11,16 +12,8 @@ body {
     background-image: url("../images/pixel_clouds.png");
 }
 
-/* .hero {
-    background-color: #074f57;
-    color: white;
-
-    padding-top: 200px;
-    padding-bottom: 200px;
-} */
-
 .container {
-    background-color: #dad4bc;
+    background-color: var(--beige);
     width: 900px;
 }
 
@@ -64,6 +57,48 @@ body {
     display: flex;
     flex-direction: row;
     background-color: white;
+}
 
+.divider-small{
+    flex: 1;
+    background-color: var(--beige);
+}
 
+.divider-big{
+    flex: 2;
+}
+
+.link-table{
+    display: flex;
+    justify-content: center;
+}
+
+.link-table a{
+    margin: 4px;
+    font-size: 18px;
+}
+
+.title-text{
+    background-color: var(--dark-blue);
+    color: white;
+    text-align: center;
+    margin-right: 6px;
+    margin-top: 0px;
+    margin-bottom: 0px;
+    border-top:6px solid var(--light-blue);
+}
+
+.subtitle-text{
+    background-color: var(--dark-blue);
+    color: white;
+    text-align: center;
+    margin: 0px;
+    font-size: 22px;
+    font-weight: 500;
+
+}
+
+.body-text{
+    margin: 10px;
+    font-size: 18px;
 }
