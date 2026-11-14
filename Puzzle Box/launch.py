@@ -1,5 +1,12 @@
 #!/usr/bin/env python3
-"""Run wave_match and keypad; reset both after 15 minutes without a switch press."""
+"""Run wave_match and keypad; reset both after 15 minutes without a switch press.
+
+The display is blanked with DPMS (wlopm) instead of removing the output with
+wlr-randr, so pygame/SDL (running via XWayland) never loses its output and
+crashes with BadRROutput.
+
+Setup: sudo apt install wlopm
+"""
 
 import os
 import re
@@ -18,7 +25,7 @@ KEYPAD_PATH = "/home/hericus/Desktop/alignmentindustries/Puzzle Box/keypad.py"
 
 
 def set_display(enabled):
-    command = ["wlr-randr", "--output", DISPLAY_OUTPUT, "--on" if enabled else "--off"]
+    command = ["wlopm", "--on" if enabled else "--off", DISPLAY_OUTPUT]
     try:
         subprocess.run(command, check=True, timeout=10)
         print(f"Display {'on' if enabled else 'off'}", flush=True)
@@ -64,7 +71,6 @@ def stop_apps(processes):
             pass
         if process.poll() is None:
             process.wait()
-
 
 
 def force_kill_wave_match():
